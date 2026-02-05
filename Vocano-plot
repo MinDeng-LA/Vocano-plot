@@ -1,0 +1,43 @@
+#Analyze the differential genes
+Idents(acne_immune_cell) <- "stim"
+table(Idents(acne_immune_cell))
+acne_immune_cell@meta.data$condition <- acne_immune_cell@meta.data$stim
+Idents(acne_immune_cell) <- "condition"
+table(Idents(acne_immune_cell))
+acne_immune_cell <- RenameIdents(
+    acne_immune_cell,
+    nonlesional = "Acne_Nonlesional",
+    lesional    = "Acne_Lesional"
+)
+acne_immune_cell@meta.data$condition <- Idents(acne_immune_cell)
+table(Idents(acne_immune_cell))
+
+
+DEG_Acne <- FindMarkers(
+    object = acne_immune_cell,
+    ident.1 = "Acne_Lesional",
+    ident.2 = "Acne_Nonlesional",
+    logfc.threshold = 0.5,#a fold-change of 2^0.5 ≈ 1.41
+    min.pct = 0.05, #at least 5% cell expressed
+    test.use = "wilcox"
+)
+library(tibble)
+DEG_Acne <- DEG_Acne %>%
+    rownames_to_column("gene") %>%
+    mutate(adj.P.Val = p.adjust(p_val, method = "BH"))
+DEG_Acne <- transform(DEG_Acne,
+                      group = ifelse(avg_log2FC >  1 & adj.P.Val < 0.01, "Upregulated",
+                                     ifelse(avg_log2FC < -1 & adj.P.Val < 0.01, "Downregulated",
+                                            ifelse(adj.P.Val < 0.01, "Significant but low FC", "NS"))),
+                      lab2  = ifelse(gene %in% c(
+                          head(gene[order(adj.P.Val, -avg_log2FC) & avg_log2FC >  1 & adj.P.Val < 0.01], 20),
+                          head(gene[order(adj.P.Val,  avg_log2FC) & avg_log2FC < -1 & adj.P.Val < 0.01], 20)
+                      ), gene, "")
+)
+EnhancedVolcano(DEG_Acne, lab = DEG_Acne$lab2, x="avg_log2FC", y="adj.P.Val",
+                title="Acne Lesional vs Nonlesional", pCutoff=0.01, FCcutoff=1,
+                colCustom=c(Upregulated="#D6604D",Downregulated="#4393C3",
+                            "Significant but low FC"="#FFD966",NS="#BDBDBD")[DEG_Acne$group],
+                legendPosition="top", cutoffLineType="dashed", drawConnectors=TRUE,
+                colConnectors="grey60", max.overlaps=Inf, pointSize=4, labSize=3.5
+)
